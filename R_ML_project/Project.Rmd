@@ -1,0 +1,1648 @@
+---
+title: "Project of CIML"
+author: "Sergio Blanco Piñeiro"
+header-includes:
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  code_folding: "hide" 
+fontsize: 12pt
+institute: "Universidad Carlos III de Madrid"
+department: "Department of Economics"
+short-author: "CIML (Spring 2023)"
+short-date: "03/30/2023"
+short-institute: "UC3M Economics"
+subtitle: "The Sensitivity of an Empirical Model of Married Women's Hours of Work to Economic
+  and Statistical Assumptions"
+---
+
+```{r setup, include=FALSE, echo=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+suppressWarnings(suppressMessages(library(tidyverse)))
+library(haven)
+library(tidyverse)
+library(GGally)
+library(extrafont)
+library(dplyr)
+library(marginaleffects)
+library(glmnet)
+library(MASS)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(class)
+library(e1071)
+library(stats)
+library(Metrics) 
+library(neuralnet)
+library(kableExtra)
+library(sandwich)
+library(stargazer)
+theme_set(theme_bw() + theme(text=element_text(family="Palatino", size=20)))
+fig.width=6
+fig.asp=0.618
+fig.align="center"
+out.width="75%"
+
+```
+
+## Data loading and visualization
+
+```{r 1, include=FALSE, echo=TRUE}
+setwd("C:\\Users\\sbp99\\Desktop\\Causal Inference and Machine Learning\\Project")
+data_frame <- read_dta("C:\\Users\\sbp99\\Desktop\\Causal Inference and Machine Learning\\Project\\mroz.dta")
+```
+
+We will compute some basic descriptive statistics for the variables of this data set. In the following boxplots we can see that we have a Sample Selection issue since the Education, Age, Experience, Family income excluding women earnings and number of kids differ across women that participate and not on the Labour Market.
+
+```{r 2, include=FALSE, echo=TRUE}
+attach(data_frame)
+head(data_frame)
+str(data_frame)
+summary(data_frame)
+sapply(data_frame, sd)
+by(data_frame, inlf, summary)
+
+```
+
+```{r 3, include=TRUE, echo=TRUE}
+boxplot(age~inlf, ylab="Age", xlab="Participation in the Labor Market",col = "blue")
+boxplot(educ~inlf, ylab="Education", xlab="Participation in the Labor Market",col = "blue")
+boxplot(exper~inlf, ylab="Experience", xlab="Participation in the Labor Market",col = "blue")
+boxplot(nwifeinc~inlf, ylab="Family income exluding women earnings", xlab="Participation in the Labor Market",col = "blue")
+boxplot(kidsge6~inlf, ylab="Number of kids between 6 to 18 years old", xlab="Participation in the Labor Market",col = "blue")
+boxplot(kidslt6~inlf, ylab="Number of kids < 6 years old", xlab="Participation in the Labor Market",col = "blue")
+```
+
+Lets compute a naive regression for the subpopulation of women that participate in the labor market. We will estimate the following equation: $log(Wage)_i=\beta_0 + \beta_1*Age_i + \beta_2*Education_i + \beta_3*Experience_i + \beta_4*{Experience_i}^2 + \beta_5*City_i+ \epsilon_i$ where we have as explanatory variables woman's age, education, labor market experience and its square, and the binary variable on living in a large city and the log of wages as a dependent variable. After we estimate this naive regression as our objective in this part is to generate an imputed log(Wages) (called, i_log(Wages)) Once we achieve that we will use that prediction in order to impute the i_log(Wage) for the non-participant women and us the prediction as the i_log(Wage) for the participant women. Even though we imputed this log(Wage) by applying the Heckman two-step-procedure we will not use this i_log(Wages) as this method accounts for Sample Selection.
+
+## Imputation of log(Wage)
+
+```{r 4, include=FALSE, echo=TRUE}
+attach(data_frame)
+participants_data_frame<-subset(data_frame, inlf == 1)
+non_participants_data_frame<-subset(data_frame, inlf == 0)
+ols_subsample<-lm(lwage~age+educ+exper+expersq+city, data =participants_data_frame )
+summary(ols_subsample)
+prediction_1<-predict(ols_subsample, newdata=non_participants_data_frame)
+data_frame$lww1<-ifelse(data_frame$inlf==1,data_frame$lwage,prediction_1)
+data_frame$kids<-(data_frame$kidslt6  + data_frame$kidsge6)
+```
+
+```{r 5, include=FALSE, echo=TRUE}
+attach(data_frame)
+
+#Interaction with city=1{if i lives in a big city}
+data_frame$city_kids<-city*kids
+data_frame$city_age<-city*age
+data_frame$city_educ<-city*educ
+data_frame$city_hushrs<-city*hushrs
+data_frame$city_husage<-city*husage
+data_frame$city_huseduc<-city*huseduc
+data_frame$city_huswage<-city*huswage
+data_frame$city_unem<-city*unem
+data_frame$city_mtr<-city*mtr
+data_frame$city_faminc<-city*faminc
+data_frame$city_motheduc<-city*motheduc
+data_frame$city_fatheduc<-city*fatheduc
+data_frame$city_unem<-city*unem
+data_frame$city_exper<-city*exper
+data_frame$city_expersq<-city*expersq
+
+#Square of covariates
+data_frame$kids_sq<-kids*kids
+data_frame$age_sq<-age*age
+data_frame$educ_sq<-educ*educ
+data_frame$hushrs_sq<-hushrs*hushrs
+data_frame$husage_sq<-husage*husage
+data_frame$huseduc_sq<-huseduc*huseduc
+data_frame$huswage_sq<-huswage*huswage
+data_frame$faminc_sq<-faminc*faminc
+data_frame$mtr_sq<-mtr*mtr
+data_frame$motheduc_sq<-motheduc*motheduc
+data_frame$fatheduc_sq<-fatheduc*fatheduc
+data_frame$unem_sq<-unem*unem
+
+#Covariates to the power of 3 
+data_frame$kids_3<-kids*kids*kids
+data_frame$age_3<-age*age*age
+data_frame$educ_3<-educ*educ*educ
+data_frame$hushrs_3<-hushrs*hushrs*hushrs
+data_frame$husage_3<-husage*husage*husage
+data_frame$huseduc_3<-huseduc*huseduc*huseduc
+data_frame$huswage_3<-huswage*huswage*huswage
+data_frame$faminc_3<-faminc*faminc*faminc
+data_frame$mtr_3<-mtr*mtr*mtr
+data_frame$motheduc_3<-motheduc*motheduc*motheduc
+data_frame$fatheduc_3<-fatheduc*fatheduc*fatheduc
+data_frame$unem_3<-unem*unem*unem
+
+#Covariates to the power of 4
+data_frame$kids_4<-kids*kids*kids*kids
+data_frame$age_4<-age*age*age*age
+data_frame$educ_4<-educ*educ*educ*educ
+data_frame$hushrs_4<-hushrs*hushrs*hushrs*hushrs
+data_frame$husage_4<-husage*husage*husage*husage
+data_frame$huseduc_4<-huseduc*huseduc*huseduc*huseduc
+data_frame$huswage_4<-huswage*huswage*huswage*huswage
+data_frame$faminc_4<-faminc*faminc*faminc*faminc
+data_frame$mtr_4<-mtr*mtr*mtr*mtr
+data_frame$motheduc_4<-motheduc*motheduc*motheduc*motheduc
+data_frame$fatheduc_4<-fatheduc*fatheduc*fatheduc*fatheduc
+data_frame$unem_4<-unem*unem*unem*unem
+
+#Covariates to the power of 5
+data_frame$kids_5<-kids*kids*kids*kids*kids
+data_frame$age_5<-age*age*age*age*age
+data_frame$educ_5<-educ*educ*educ*educ*educ
+data_frame$hushrs_5<-hushrs*hushrs*hushrs*hushrs*hushrs
+data_frame$husage_5<-husage*husage*husage*husage*husage
+data_frame$huseduc_5<-huseduc*huseduc*huseduc*huseduc*huseduc
+data_frame$huswage_5<-huswage*huswage*huswage*huswage*huswage
+data_frame$faminc_5<-faminc*faminc*faminc*faminc*faminc
+data_frame$mtr_5<-mtr*mtr*mtr*mtr*mtr
+data_frame$motheduc_5<-motheduc*motheduc*motheduc*motheduc*motheduc
+data_frame$fatheduc_5<-fatheduc*fatheduc*fatheduc*fatheduc*fatheduc
+data_frame$unem_5<-unem*unem*unem*unem*unem
+
+#Interaction with faminc
+data_frame$faminc_kids<-faminc*kids
+data_frame$faminc_age<-faminc*age
+data_frame$faminc_educ<-faminc*educ
+data_frame$faminc_hushrs<-faminc*hushrs
+data_frame$faminc_husage<-faminc*husage
+data_frame$faminc_huseduc<-faminc*huseduc
+data_frame$faminc_huswage<-faminc*huswage
+data_frame$faminc_mtr<-faminc*mtr
+data_frame$faminc_motheduc<-faminc*motheduc
+data_frame$faminc_fatheduc<-faminc*fatheduc
+data_frame$faminc_unem<-faminc*unem
+data_frame$faminc_exper<-faminc*exper
+data_frame$faminc_expersq<-faminc*expersq
+
+#Interaction with unem
+data_frame$unem_kids<-unem*kids
+data_frame$unem_age<-unem*age
+data_frame$unem_educ<-unem*educ
+data_frame$unem_hushrs<-unem*hushrs
+data_frame$unem_husage<-unem*husage
+data_frame$unem_huseduc<-unem*huseduc
+data_frame$unem_huswage<-unem*huswage
+data_frame$unem_mtr<-unem*mtr
+data_frame$unem_motheduc<-unem*motheduc
+data_frame$unem_fatheduc<-unem*fatheduc
+data_frame$unem_exper<-unem*exper
+data_frame$unem_expersq<-unem*expersq
+
+#Interaction with huswage
+data_frame$huswage_kids<-huswage*kids
+data_frame$huswage_age<-huswage*age
+data_frame$huswage_educ<-huswage*educ
+data_frame$huswage_hushrs<-huswage*hushrs
+data_frame$huswage_husage<-huswage*husage
+data_frame$huswage_huseduc<-huswage*huseduc
+data_frame$huswage_mtr<-huswage*mtr
+data_frame$huswage_motheduc<-huswage*motheduc
+data_frame$huswage_fatheduc<-huswage*fatheduc
+data_frame$huswage_exper<-huswage*exper
+data_frame$huswage_expersq<-huswage*expersq
+
+#Interaction with fatheduc
+data_frame$fatheduc_kids<-fatheduc*kids
+data_frame$fatheduc_age<-fatheduc*age
+data_frame$fatheduc_educ<-fatheduc*educ
+data_frame$fatheduc_hushrs<-fatheduc*hushrs
+data_frame$fatheduc_husage<-fatheduc*husage
+data_frame$fatheduc_huseduc<-fatheduc*huseduc
+data_frame$fatheduc_mtr<-fatheduc*mtr
+data_frame$fatheduc_motheduc<-fatheduc*motheduc
+data_frame$fatheduc_exper<-fatheduc*exper
+data_frame$fatheduc_expersq<-fatheduc*expersq
+
+
+#Interaction with motheduc
+data_frame$motheduc_kids<-motheduc*kids
+data_frame$motheduc_age<-motheduc*age
+data_frame$motheduc_educ<-motheduc*educ
+data_frame$motheduc_hushrs<-motheduc*hushrs
+data_frame$motheduc_husage<-motheduc*husage
+data_frame$motheduc_huseduc<-motheduc*huseduc
+data_frame$motheduc_mtr<-motheduc*mtr
+data_frame$motheduc_exper<-motheduc*exper
+data_frame$motheduc_expersq<-motheduc*expersq
+
+#Interaction with educ
+data_frame$educ_kids<-educ*kids
+data_frame$educ_age<-educ*age
+data_frame$educ_hushrs<-educ*hushrs
+data_frame$educ_husage<-educ*husage
+data_frame$educ_huseduc<-educ*huseduc
+data_frame$educ_mtr<-educ*mtr
+data_frame$educ_exper<-educ*exper
+data_frame$educ_expersq<-educ*expersq
+
+#Interaction with age
+data_frame$age_kids<-age*kids
+data_frame$age_hushrs<-age*hushrs
+data_frame$age_husage<-age*husage
+data_frame$age_huseduc<-age*huseduc
+data_frame$age_mtr<-age*mtr
+data_frame$age_exper<-age*exper
+data_frame$age_expersq<-age*expersq
+
+#Interaction with hushrs
+data_frame$hushrs_kids<-hushrs*kids
+data_frame$hushrs_husage<-hushrs*husage
+data_frame$hushrs_huseduc<-hushrs*huseduc
+data_frame$hushrs_mtr<-hushrs*mtr
+data_frame$hushrs_exper<-hushrs*exper
+data_frame$hushrs_expersq<-hushrs*expersq
+
+#Interaction with husage
+data_frame$husage_kids<-husage*kids
+data_frame$husage_huseduc<-husage*huseduc
+data_frame$husage_mtr<-husage*mtr
+data_frame$husage_exper<-husage*exper
+data_frame$husage_expersq<-husage*expersq
+
+#Interaction with huseduc
+data_frame$huseduc_kids<-huseduc*kids
+data_frame$huseduc_mtr<-huseduc*mtr
+data_frame$huseduc_exper<-huseduc*exper
+data_frame$huseduc_expersq<-huseduc*expersq
+```
+
+```{r 6, include=FALSE, echo=TRUE}
+
+set.seed(1)
+sample<-list()
+train<-list()
+test<-list()
+
+for (i in seq(1,5)){
+
+ sample[[i]]<-sample(c(TRUE, FALSE), nrow(data_frame), replace=TRUE, prob=c(0.8,0.2))
+ train[[i]]  <- data_frame[sample[[i]], ]
+ test[[i]]  <- data_frame[!sample[[i]], ]
+}
+  
+
+
+```
+
+## First Step estimation
+
+Once, we have created our variable i_log(Wage). Lets estimate the following equation $D_i:= 1\{inlf_i=1\}=F(\textbf{Z}_i^{T}\gamma)$ using a set of covariates $\textbf{Z}_i$. In order to estimate this model we will use firstly a Linear Probability model, Logit model and a Probit model using a naive regression with a small set of covariates. But before we estimate the previous model, we will create a HD setting.
+
+```{r 7, include=FALSE, echo=TRUE}
+
+#### Naive Model Fitting
+
+#Naive Logit
+
+logit_<-list()
+for (i in seq(1,length(train))){
+logit_[[i]]<-glm(inlf~kids + age + educ + nwifeinc + unem + city, data = train[[i]], family = "binomial")
+print(logit_[[i]])
+}
+
+#Naive Probit
+
+probit_<-list()
+for (i in seq(1,length(train))){
+probit_[[i]]=glm(inlf~kids + age + educ + nwifeinc + unem + city, data = train[[i]], family = binomial(link = "probit"))
+print(probit_[[i]])
+}
+
+#Naive LPM
+
+LPM_<-list()
+for (i in seq(1,length(train))){
+LPM_[[i]]=lm(inlf~kids + age + educ + nwifeinc + unem + city, data = train[[i]])
+print(LPM_[[i]])
+}
+
+
+
+```
+
+Once we have computed the naive First Step regression (notice that we will only care about prediction) we will make use of the machine learners in order to predict the participation of women in our sample. We will also exploit the HD created by interactions and powers of the covariates in our sample. For that, we will use a set of learners that will be trained in the i-th training set and tested in the i-th test set, where $i \in \{1,..,5\}$:
+
+```{r 8, include=FALSE, echo=TRUE}
+#### Model Fitting
+
+
+###Elastic Net Regression
+
+train_HD<-list()
+test_HD<-list()
+
+for (i in seq(1,5)){
+
+
+ train_HD[[i]]  <- train[[i]][c(-2:-4,-7:-8,-21,-23)]
+ test_HD[[i]]  <- test[[i]][c(-2:-4,-7:-8,-21,-23)]
+}
+ 
+
+y<-list()
+x<-list()
+
+for (i in seq(1,5)){
+  
+x[[i]] <- data.matrix(train_HD[[i]][c(-1)])
+y[[i]] <- data.matrix(train_HD[[i]][c(1)])
+
+} 
+##Lasso
+
+
+#Logit Lasso
+
+cv.logit_lasso<-list()
+
+for (i in seq(1,5)){
+cv.logit_lasso[[i]]<- cv.glmnet(x[[i]],y[[i]], alpha = 1, family = "binomial")
+}
+
+
+best_lambda_logit_lasso<-list()
+
+for (i in seq(1,5)){
+best_lambda_logit_lasso[[i]]<-cv.logit_lasso[[i]]$lambda.min
+}
+
+
+logit_lasso<-list()
+
+for (i in seq(1,5)){
+
+logit_lasso[[i]]<-glmnet(x[[i]],y[[i]], alpha = 1, family = "binomial",lambda = best_lambda_logit_lasso[[i]])
+print(logit_lasso[[i]])
+
+}
+
+#Probit Lasso
+
+cv.probit_lasso<-list()
+
+for (i in seq(1,5)){
+  cv.probit_lasso[[i]]<- cv.glmnet(x[[i]],y[[i]], alpha = 1, family = binomial(link = "probit"))
+}
+
+
+best_lambda_probit_lasso<-list()
+
+for (i in seq(1,5)){
+  best_lambda_probit_lasso[[i]]<-cv.probit_lasso[[i]]$lambda.min
+}
+
+
+probit_lasso<-list()
+
+for (i in seq(1,5)){
+  
+  probit_lasso[[i]]<-glmnet(x[[i]],y[[i]], alpha = 1, family = binomial(link = "probit"),lambda = best_lambda_probit_lasso[[i]])
+  print(probit_lasso[[i]])
+  
+}
+
+#LPM Lasso 
+
+cv.LPM_lasso<-list()
+
+for (i in seq(1,5)){
+cv.LPM_lasso[[i]]<- cv.glmnet(x[[i]],y[[i]], alpha = 1)
+}
+
+
+best_lambda_LPM_lasso<-list()
+
+for (i in seq(1,5)){
+best_lambda_LPM_lasso[[i]]<-cv.LPM_lasso[[i]]$lambda.min
+}
+
+
+LPM_lasso<-list()
+
+for (i in seq(1,5)){
+
+LPM_lasso[[i]]<-glmnet(x[[i]],y[[i]], alpha = 1,lambda = best_lambda_LPM_lasso[[i]])
+print(LPM_lasso[[i]])
+
+}
+
+##Ridge
+
+
+#Logit Ridge
+
+cv.logit_ridge<-list()
+
+for (i in seq(1,5)){
+cv.logit_ridge[[i]]<- cv.glmnet(x[[i]],y[[i]], alpha = 0, family = "binomial")
+}
+
+
+best_lambda_logit_ridge<-list()
+
+for (i in seq(1,5)){
+best_lambda_logit_ridge[[i]]<-cv.logit_ridge[[i]]$lambda.min
+}
+
+
+logit_ridge<-list()
+
+for (i in seq(1,5)){
+
+logit_ridge[[i]]<-glmnet(x[[i]],y[[i]], alpha = 0, family = "binomial",lambda = best_lambda_logit_ridge[[i]])
+print(logit_ridge[[i]])
+
+}
+
+
+
+#Probit Ridge
+
+cv.probit_ridge<-list()
+
+for (i in seq(1,5)){
+cv.probit_ridge[[i]]<- cv.glmnet(x[[i]],y[[i]], alpha = 0, family = binomial(link = "probit"))
+}
+
+
+best_lambda_probit_ridge<-list()
+
+for (i in seq(1,5)){
+best_lambda_probit_ridge[[i]]<-cv.probit_ridge[[i]]$lambda.min
+}
+
+
+probit_ridge<-list()
+
+for (i in seq(1,5)){
+
+probit_ridge[[i]]<-glmnet(x[[i]],y[[i]], alpha = 0, family = binomial(link = "probit"),lambda = best_lambda_probit_ridge[[i]])
+print(probit_ridge[[i]])
+
+}
+
+
+#LPM Ridge 
+
+cv.LPM_ridge<-list()
+
+for (i in seq(1,5)){
+cv.LPM_ridge[[i]]<- cv.glmnet(x[[i]],y[[i]], alpha = 0)
+}
+
+
+best_lambda_LPM_ridge<-list()
+
+for (i in seq(1,5)){
+best_lambda_LPM_ridge[[i]]<-cv.LPM_ridge[[i]]$lambda.min
+}
+
+
+LPM_ridge<-list()
+
+for (i in seq(1,5)){
+
+LPM_ridge[[i]]<-glmnet(x[[i]],y[[i]], alpha = 0,lambda = best_lambda_LPM_ridge[[i]])
+print(LPM_ridge[[i]])
+
+}
+
+
+###Discriminant Analysis
+
+## Linear Discriminant Analysis (LDA)
+
+LDA<-list()
+
+for (i in seq(1,5)){
+
+  LDA[[i]]<-lda(inlf~.,data=train_HD[[i]])
+}
+
+ for (i in seq(1,5)){
+  plot(LDA[[i]])
+   } 
+
+###Classification Trees
+
+##Decision Tree
+
+Decision_Tree<-list()
+
+for (i in seq(1,5)){
+  
+  Decision_Tree[[i]]<-rpart(inlf~.,data=train_HD[[i]],method = "class")
+
+}
+
+
+##Random Forest
+
+y_as.factor<-list()
+
+for (i in seq(1,5)){
+y_as.factor[[i]]=as.factor(y[[i]])
+  }
+
+Random_Forest<-list()
+
+for (i in seq(1,5)){
+  
+  Random_Forest[[i]]<-randomForest(x=x[[i]],y=y_as.factor[[i]],method = "class")
+
+}
+
+##K-Nearest Neighbors (kNN)
+
+
+ 
+kNN.24<-list()
+kNN.25<-list()
+table_24<-list()
+table_25<-list()
+
+for (i in seq(1,5)){
+train_kNN<-train_HD[[i]]
+test_kNN<-test_HD[[i]]
+y_train_kNN<-ifelse(train_kNN[,1]==0,"0", "1")
+y_test_kNN<-ifelse(test_kNN[,1]==0,"0", "1")
+train_kNN<-train_kNN[,-1]
+test_kNN<-test_kNN[,-1]
+kNN.24[[i]]<-knn(train = train_kNN, test = test_kNN, cl=y_train_kNN, k=24)
+kNN.25[[i]]<-knn(train = train_kNN, test = test_kNN, cl=y_train_kNN, k=25)
+table_24[[i]]<-table(kNN.24[[i]], y_test_kNN)
+mean(kNN.24[[i]], y_test_kNN)
+table_25[[i]]<-table(kNN.25[[i]], y_test_kNN)
+mean(kNN.25[[i]], y_test_kNN)
+}
+
+for (i in seq(1,5)){
+  plot(cv.logit_lasso[[i]])
+  plot(cv.LPM_lasso[[i]])
+  plot(cv.logit_ridge[[i]])
+  plot(cv.probit_ridge[[i]])
+  plot(cv.LPM_ridge[[i]])
+}
+
+
+for (i in seq(1,5)){
+
+  rpart.plot( Decision_Tree[[i]],type = 3, box.palette = c("red", "green"), fallen.leaves = TRUE)
+  plotcp(Decision_Tree[[i]])
+  }
+
+```
+
+```{r 9, include=TRUE, echo=TRUE}
+
+  plot(cv.logit_lasso[[1]])
+  plot(cv.LPM_lasso[[1]])
+  plot(cv.logit_ridge[[1]])
+  plot(cv.probit_ridge[[1]])
+  plot(cv.LPM_ridge[[1]])
+
+
+
+
+
+  rpart.plot( Decision_Tree[[1]],type = 3, box.palette = c("red", "green"), fallen.leaves = TRUE)
+  plotcp(Decision_Tree[[1]])
+  
+
+```
+
+In this plots (notice that we only plot the first splits) we can see that taking into account $\lambda=0\Rightarrow log(\lambda)=\infty$ that even though we do not have $p>n$ given our number of covariates using Lasso or Ridge may have some justification as we do not archive the minimum for the measure of performing for lambdas equal to 0. Take into account that this will vary across our 5 splits of the training sample. We will display also some measures of performance of the Decision Tree learner and the a graph of this Decision Tree for the 5 splits.
+
+```{r 10, include=FALSE, echo=TRUE}
+
+matrix_RCC<-matrix(NA, nrow=6, ncol=14)
+colnames(matrix_RCC)<-c("Naive Logit","Naive Probit","Naive LPM","Logit Lasso","Probit Lasso","LPM Lasso","Logit Ridge", "Probit Ridge","LPM Ridge","LDA" , "Decision Tree" , "Random Forest", "K-Nearest Neighbors (K=24)", "K-Nearest Neighbors (K=25)")
+rownames(matrix_RCC)<-c("Split 1", "Split 2", "Split 3", "Split 4", "Split 5", "Average")
+matrix_RCC <- rownames_to_column(as.data.frame(matrix_RCC), var = "Rate of Correct Classification (RCC)")
+
+# Note: RCC is Rate of Correct Classification
+
+y_test<-list()
+
+for (i in seq(1,5)){
+
+  y_test[[i]] <- data.matrix(test[[i]][c(1)])
+}
+
+
+y_test_HD<-list()
+x_test_HD<-list()
+
+for (i in seq(1,5)){
+
+  y_test_HD[[i]] <- data.matrix(test_HD[[i]][c(1)])
+  x_test_HD[[i]] <- data.matrix(test_HD[[i]][c(-1)])
+  }
+
+y_as.factor_test<-list()
+
+for (i in seq(1,5)){
+y_as.factor_test[[i]]=as.factor(y_test_HD[[i]])
+  }
+
+#### Naive Model Testing
+
+
+test.probs.logit_<-list()
+pred.logit_<-list()
+RCC.logit_<-list()
+
+test.probs.probit_<-list()
+pred.probit_<-list()
+RCC.probit_<-list()
+
+test.probs.LPM_<-list()
+pred.LPM_<-list()
+RCC.LPM_<-list()
+
+test.probs.logit_lasso<-list()
+pred.logit_lasso<-list()
+RCC.logit_lasso<-list()
+
+test.probs.probit_lasso<-list()
+pred.probit_lasso<-list()
+RCC.probit_lasso<-list()
+
+
+test.probs.LPM_lasso<-list()
+pred.LPM_lasso<-list()
+RCC.LPM_lasso<-list()
+
+test.probs.logit_ridge<-list()
+pred.logit_ridge<-list()
+RCC.logit_ridge<-list()
+
+
+test.probs.probit_ridge<-list()
+pred.probit_ridge<-list()
+RCC.probit_ridge<-list()
+
+
+test.probs.LPM_ridge<-list()
+pred.LPM_ridge<-list()
+RCC.LPM_ridge<-list()
+
+test.probs.LDA<-list()
+RCC.LDA<-list()
+
+
+test.probs.Decision_Tree<-list()
+RCC.Decision_Tree<-list()
+
+test.probs.Random_Forest<-list()
+RCC.Random_Forest<-list()
+
+
+RCC.kNN.24<-list()
+
+RCC.kNN.25<-list()
+
+for (i in seq(1,5)){
+ 
+#Naive Logit
+test.probs.logit_[[i]]<-predict(logit_[[i]], newdata =test[[i]],type="response")
+pred.logit_[[i]]<-ifelse(test.probs.logit_[[i]]>0.5, 1, 0)
+table(pred.logit_[[i]],y_test[[i]])
+RCC.logit_[[i]]<-mean(pred.logit_[[i]]==y_test[[i]])
+matrix_RCC[i,2]<-RCC.logit_[[i]]
+
+#Naive Probit
+test.probs.probit_[[i]]<-predict(probit_[[i]],newdata =test[[i]],type="response")
+pred.probit_[[i]]<-ifelse(test.probs.probit_[[i]]>0.5, 1, 0)
+table(pred.probit_[[i]],y_test[[i]])
+RCC.probit_[[i]]<-mean(pred.probit_[[i]]==y_test[[i]])
+matrix_RCC[i,3]<-RCC.probit_[[i]]
+
+
+#Naive LPM
+
+
+test.probs.LPM_[[i]]<-predict(LPM_[[i]],newdata =test[[i]],type="response")
+pred.LPM_[[i]]<-ifelse(test.probs.LPM_[[i]]>0.5, 1, 0)
+table(pred.LPM_[[i]],y_test[[i]])
+RCC.LPM_[[i]]<-mean(pred.LPM_[[i]]==y_test[[i]])
+matrix_RCC[i,4]<-RCC.LPM_[[i]]
+
+#### HD Model Testing
+
+# Logit Lasso
+
+test.probs.logit_lasso[[i]]<- logit_lasso[[i]] %>% predict(newx = x_test_HD[[i]])
+pred.logit_lasso[[i]]<-ifelse(test.probs.logit_lasso[[i]]>0.5, 1, 0)
+table(pred.logit_lasso[[i]],y_test_HD[[i]])
+RCC.logit_lasso[[i]]<-mean(pred.logit_lasso[[i]]==y_test_HD[[i]])
+matrix_RCC[i,5]<-RCC.logit_lasso[[i]]
+
+# Probit Lasso
+
+test.probs.probit_lasso[[i]]<- probit_lasso[[i]] %>% predict(newx = x_test_HD[[i]])
+pred.probit_lasso[[i]]<-ifelse(test.probs.probit_lasso[[i]]>0.5, 1, 0)
+table(pred.probit_lasso[[i]],y_test_HD[[i]])
+RCC.probit_lasso[[i]]<-mean(pred.probit_lasso[[i]]==y_test_HD[[i]])
+matrix_RCC[i,6]<-RCC.probit_lasso[[i]]
+
+
+# LPM Lasso
+
+test.probs.LPM_lasso[[i]]<- LPM_lasso[[i]] %>% predict(newx = x_test_HD[[i]])
+pred.LPM_lasso[[i]]<-ifelse(test.probs.LPM_lasso[[i]]>0.5, 1, 0)
+table(pred.LPM_lasso[[i]],y_test_HD[[i]])
+RCC.LPM_lasso[[i]]<-mean(pred.LPM_lasso[[i]]==y_test_HD[[i]])
+matrix_RCC[i,7]<-RCC.LPM_lasso[[i]]
+
+
+# Logit Ridge
+
+test.probs.logit_ridge[[i]]<- logit_ridge[[i]] %>% predict(newx = x_test_HD[[i]])
+pred.logit_ridge[[i]]<-ifelse(test.probs.logit_ridge[[i]]>0.5, 1, 0)
+table(pred.logit_ridge[[i]],y_test_HD[[i]])
+RCC.logit_ridge[[i]]<-mean(pred.logit_ridge[[i]]==y_test_HD[[i]])
+matrix_RCC[i,8]<-RCC.logit_ridge[[i]]
+
+
+# Probit Ridge
+
+test.probs.probit_ridge[[i]]<- probit_ridge[[i]] %>% predict(newx = x_test_HD[[i]])
+pred.probit_ridge[[i]]<-ifelse(test.probs.probit_ridge[[i]]>0.5, 1, 0)
+table(pred.probit_ridge[[i]],y_test_HD[[i]])
+RCC.probit_ridge[[i]]<-mean(pred.probit_ridge[[i]]==y_test_HD[[i]])
+matrix_RCC[i,9]<-RCC.probit_ridge[[i]]
+
+# LPM Ridge
+
+test.probs.LPM_ridge[[i]]<- LPM_ridge[[i]] %>% predict(newx = x_test_HD[[i]])
+pred.LPM_ridge[[i]]<-ifelse(test.probs.LPM_ridge[[i]]>0.5, 1, 0)
+table(pred.LPM_ridge[[i]],y_test_HD[[i]])
+RCC.LPM_ridge[[i]]<-mean(pred.LPM_ridge[[i]]==y_test_HD[[i]])
+matrix_RCC[i,10]<-RCC.LPM_ridge[[i]]
+
+#LDA
+
+test.probs.LDA[[i]]<-predict(LDA[[i]],newdata =test_HD[[i]])
+table(test.probs.LDA[[i]]$class,y_as.factor_test[[i]])
+RCC.LDA[[i]]<-mean(test.probs.LDA[[i]]$class==y_as.factor_test[[i]])
+matrix_RCC[i,11]<-RCC.LDA[[i]]
+
+###Classification Trees
+
+##Decision Tree
+
+test.probs.Decision_Tree[[i]]<-predict(Decision_Tree[[i]], test_HD[[i]], type = "class")
+table(test.probs.Decision_Tree[[i]], y_as.factor_test[[i]])
+RCC.Decision_Tree[[i]]<-mean(test.probs.Decision_Tree[[i]]==y_as.factor_test[[i]])
+matrix_RCC[i,12]<-RCC.Decision_Tree[[i]]
+
+
+##Random Forest
+
+test.probs.Random_Forest[[i]]<-predict(Random_Forest[[i]], test_HD[[i]], type = "class")
+table(test.probs.Random_Forest[[i]], y_as.factor_test[[i]])
+RCC.Random_Forest[[i]]<-mean(test.probs.Random_Forest[[i]]==y_as.factor_test[[i]])
+matrix_RCC[i,13]<-RCC.Random_Forest[[i]]
+
+
+#K-Nearest Neighbors (K=24)
+
+table(kNN.24[[i]],y_as.factor_test[[i]])
+RCC.kNN.24[[i]]<-mean(kNN.24[[i]]==y_as.factor_test[[i]])
+matrix_RCC[i,14]<-RCC.kNN.24[[i]]
+
+#K-Nearest Neighbors (K=25)
+
+table(kNN.25[[i]],y_as.factor_test[[i]])
+RCC.kNN.25[[i]]<-mean(kNN.25[[i]]==y_as.factor_test[[i]])
+matrix_RCC[i,15]<-RCC.kNN.25[[i]]
+
+}
+
+mean.RCC.logit_<-mean(unlist(RCC.logit_))
+matrix_RCC[6,2]<-mean.RCC.logit_
+mean.RCC.probit_<-mean(unlist(RCC.probit_))
+matrix_RCC[6,3]<-mean.RCC.probit_
+mean.RCC.LPM_<-mean(unlist(RCC.LPM_))
+matrix_RCC[6,4]<-mean.RCC.LPM_
+mean.RCC.logit_lasso<-mean(unlist(RCC.logit_lasso))
+matrix_RCC[6,5]<-mean.RCC.logit_lasso
+mean.RCC.probit_lasso<-mean(unlist(RCC.probit_lasso))
+matrix_RCC[6,6]<-mean.RCC.probit_lasso
+mean.RCC.LPM_lasso<-mean(unlist(RCC.LPM_lasso))
+matrix_RCC[6,7]<-mean.RCC.LPM_lasso
+mean.RCC.logit_ridge<-mean(unlist(RCC.logit_ridge))
+matrix_RCC[6,8]<-mean.RCC.logit_ridge
+mean.RCC.probit_ridge<-mean(unlist(RCC.probit_ridge))
+matrix_RCC[6,9]<-mean.RCC.probit_ridge
+mean.RCC.LPM_ridge<-mean(unlist(RCC.LPM_ridge))
+matrix_RCC[6,10]<-mean.RCC.LPM_ridge
+mean.RCC.LDA<-mean(unlist(RCC.LDA))
+matrix_RCC[6,11]<-mean.RCC.LDA
+mean.RCC.Decision_Tree<-mean(unlist(RCC.Decision_Tree))
+matrix_RCC[6,12]<-mean.RCC.Decision_Tree
+mean.RCC.Random_Forest<-mean(unlist(RCC.Random_Forest))
+matrix_RCC[6,13]<-mean.RCC.Random_Forest
+mean.RCC.kNN.24<-mean(unlist(RCC.kNN.24))
+matrix_RCC[6,14]<-mean.RCC.kNN.24
+mean.RCC.kNN.25<-mean(unlist(RCC.kNN.25))
+matrix_RCC[6,15]<-mean.RCC.kNN.25
+
+
+```
+
+```{r 11, include=TRUE, echo=TRUE}
+knitr::kable(t(matrix_RCC), align="c", booktabs=T, caption="RCC")%>%kable_styling(latex_option=c("hold_position"))
+
+```
+
+In the previous matrix we can see the Rate of Correct Classification (RCC) for the five splits of the test set and for the average value, that will be the measure of out-of-sample performing.
+
+```{r 12, include=FALSE, echo=TRUE}
+
+confusion_logit_<-list()
+confusion_probit_<-list()
+confusion_LPM_<-list()
+confusion_logit_lasso<-list()
+confusion_probit_lasso<-list()
+confusion_LPM_lasso<-list()
+confusion_logit_ridge<-list()
+confusion_probit_ridge<-list()
+confusion_LPM_ridge<-list()
+confusion_LDA<-list()
+confusion_Decision_Tree<-list()
+confusion_Random_Forest<-list()
+confusion_kNN.24<-list()
+confusion_kNN.25<-list()
+
+
+for (i in seq(1,5)){
+confusion_logit_[[i]]<-table(pred.logit_[[i]],y_test[[i]])
+confusion_probit_[[i]]<-table(pred.probit_[[i]],y_test[[i]])
+confusion_LPM_[[i]]<-table(pred.LPM_[[i]],y_test[[i]])
+confusion_logit_lasso[[i]]<-table(pred.logit_lasso[[i]],y_test_HD[[i]])
+confusion_probit_lasso[[i]]<-table(pred.probit_lasso[[i]],y_test_HD[[i]])
+confusion_LPM_lasso[[i]]<-table(pred.LPM_lasso[[i]],y_test_HD[[i]])
+confusion_logit_ridge[[i]]<-table(pred.logit_ridge[[i]],y_test_HD[[i]])
+confusion_probit_ridge[[i]]<-table(pred.probit_ridge[[i]],y_test_HD[[i]])
+confusion_LPM_ridge[[i]]<-table(pred.LPM_ridge[[i]],y_test_HD[[i]])
+confusion_LDA[[i]]<-table(test.probs.LDA[[i]]$class,y_as.factor_test[[i]])
+confusion_Decision_Tree[[i]]<-table(test.probs.Decision_Tree[[i]], y_as.factor_test[[i]])
+confusion_Random_Forest[[i]]<-table(test.probs.Random_Forest[[i]], y_as.factor_test[[i]])
+confusion_kNN.24[[i]]<-table(kNN.24[[i]],y_as.factor_test[[i]])
+confusion_kNN.25[[i]]<-table(kNN.25[[i]],y_as.factor_test[[i]])
+}
+
+for (i in seq(1,5)){
+  print(confusion_logit_lasso[[i]])
+  print(confusion_probit_lasso[[i]])
+}
+```
+
+```{r 13, include=TRUE, echo=TRUE}
+
+  print(confusion_logit_lasso[[1]])
+  print(confusion_probit_lasso[[1]])
+
+```
+
+As we can see here the confusion matrix (notice that we only plot the first splits) for the Logit Lasso and the Probit Lasso tell us something similar to what the RCC is telling us. Hence, we will use the measure of RCC as a measure of performing out-of-sample since this measure is consistent with the confusion matrix.
+
+Once we have tested all our learners, by computing the Rate of Correct Classification (RCC) and also the confusion matrices of each split, we will proceed by selecting two different models for our estimation of this First Stage. These model are the Logit Lasso and the Probit Lasso, as they report a RCC of 0.95 and 0.93, respectively. So, once we have selected the models we will use these predictions to compute the Second Stage. In order to do show, we will compute a similar procedure to the one following by Mroz (1987) in the known Mroz's multistage procedure to estimate a structural labor supply equation. This procedure is as follows, we will have the following equations, where the setting is as stated in Weerasooriya (2018), that in our setting is the following one:
+
+$D_i:= 1\{inlf_i=1\}=F(\textbf{Z}_i^{T}\gamma) + e_{i}$ $(1)$
+
+$log(Wage_{i})=\textbf{X}_{1i}^{T}\beta + v_{1i}$ $(2)$
+
+$h_i=\textbf{X}_{2i}^{T}\beta + v_{2i}$ $(3)$
+
+where equation (1) is the Selection equation in the model and equation (2) is the Second Stage. Hence, both equations (1) and (2) accounts for the Heckman two-step procedure. We will have that $\textbf{Z}_i$ in Mroz (1987) are the following covariates, for two different specifications:
+
+$(i):$ family composition (children), powers of woman's age and education and their interactions between them to approximate a third-order polynomial in these two variables,education of the woman's father and mother, local unemployment rate, binary variable on living in a large city, and family income excl. woman's earnings.
+
+$(ii):$ the variables in $(i)$ plus labor market experience and its square.
+
+Whereas in Mroz (1987) this is the set of covariates used in equation (1), we will follow a more data driven way and thus, make use of the HD setting to predict by using machine learner. The two best learners are Logit Lasso and the Probit Lasso. We will compute the Inverse Mill's ratio to account for the sample Selection in our Second Stage. Once we have computed an estimate of $\lambda(\textbf{Z}_i^{T}\gamma)$, say $\hat\lambda(\textbf{Z}_i^{T}\hat\gamma)$, where we can apply the Heckman two-step approach assuming joint normality of $(e_{i},v_{1i}) \sim \mathcal{N_2}(0,,\Sigma)$ or a non-parametric version where we compute $\hat\lambda(\textbf{Z}_i^{T}\hat\gamma)=\dfrac{f_n(\textbf{Z}_i^{T}\hat\gamma)}{F_n(\textbf{Z}_i^{T}\hat\gamma)}$ where $f_n(\textbf{Z}_i^{T}\hat\gamma)$ is the empirical pdf from the predicted values of the machine learner estimate, while $F_n(\textbf{Z}_i^{T}\hat\gamma)$ is the empirical cdf from the predicted values of the machine learner estimate. Once we have compute our estimate of the Inverse Mill's ratio, we will use it in equation (2) where $\textbf{X}_{1i}=(\textbf{Z}_i,\hat\lambda(\textbf{Z}_i^{T}\hat\gamma))$ and by that we will account for the selection bias.
+
+Once, we have solve this selection issue in equation (2) we will proceed by predicting the log(Wage) using in this step also some learners.
+
+Finally, the contents of $\textbf{X}_{2i}$ will be $\hat log(Wage)_i$ from equation (2), the non-wife income, number of older and younger children, the age and education of the wife and $\hat\lambda(\textbf{Z}_i^{T}\hat\gamma)$ from equation (1).
+
+## Second Step estimation
+
+In this step we will proceed by using the estimates of the probit lasso model and the logit lasso model, as these two learners are the one that predicts the better out-of-sample. Given that, we will use both learners to compute the empirical lambda of Heckman we will use for the following formula for computing the empirical cdf:
+
+$$
+F_{\textbf{Z}i^{T}\hat\gamma}(b)={\dfrac{1}{n}\sum_{i=1}^{n}} 1 \{ \textbf{Z}_i^{T}\hat\gamma \leqslant b \}
+$$
+
+and using the Kernel Density Estimation in order to estimate the empirical pdf. Once, we have compute both empirical functions the empirical lambda de Heckman is just the ratio between both functions.
+
+```{r 14, include=FALSE, echo=TRUE}
+
+x_data_frame<- as.matrix(data_frame[c(-1:-4,-7:-8,-21,-23)])
+y_data_frame<-as.matrix(data_frame[c(1)])
+
+#Logit Lasso (full sample (N=753))
+
+cv.logit_lasso_data_frame<- cv.glmnet(x_data_frame,data_frame$inlf, alpha = 1, family = "binomial")
+best_lambda_logit_lasso_data_frame<-cv.logit_lasso_data_frame$lambda.min
+logit_lasso_data_frame<-glmnet(x_data_frame,y_data_frame, alpha = 1,family = "binomial" ,lambda = best_lambda_logit_lasso_data_frame)
+
+#Probit Lasso (full sample (N=753))
+
+cv.probit_lasso_data_frame<- cv.glmnet(x_data_frame,data_frame$inlf, alpha = 1, family = binomial(link = "probit"))
+best_lambda_probit_lasso_data_frame<-cv.probit_lasso_data_frame$lambda.min
+probit_lasso_data_frame<-glmnet(x_data_frame,y_data_frame, alpha = 1, family = binomial(link = "probit"),lambda = best_lambda_probit_lasso_data_frame)
+
+##Compute the non-parametric lambda of Heckman 
+
+x_beta_hat_logit_lasso<-predict(logit_lasso_data_frame, newx=data.matrix(data_frame[c(-1:-4,-7:-8,-21,-23 )]))
+x_beta_hat_probit_lasso<-predict(probit_lasso_data_frame, newx=data.matrix(data_frame[c(-1:-4,-7:-8,-21,-23)]))
+
+
+#Empirical cdf for the predicted values
+
+ecdf_x_beta_hat_logit_lasso<-ecdf(x_beta_hat_logit_lasso)
+data_frame$ecdf_logit_lasso<-ecdf_x_beta_hat_logit_lasso(x_beta_hat_logit_lasso)  
+ecdf_x_beta_hat_probit_lasso<-ecdf(x_beta_hat_probit_lasso)
+data_frame$ecdf_probit_lasso<-ecdf_x_beta_hat_probit_lasso(x_beta_hat_probit_lasso)
+
+
+
+
+#Empirical pdf for the predicted values
+
+epdf_x_beta_hat_logit_lasso<-density(x_beta_hat_logit_lasso,n = 753)
+data_frame$epdf_logit_lasso<-epdf_x_beta_hat_logit_lasso[["y"]]
+epdf_x_beta_hat_probit_lasso<-density(x_beta_hat_probit_lasso, n = 753)
+data_frame$epdf_probit_lasso<-epdf_x_beta_hat_probit_lasso[["y"]]
+
+
+#Empirical lambda of Heckman for the predicted values
+
+data_frame$lambda_logit_lasso<-data_frame$epdf_logit_lasso/data_frame$ecdf_logit_lasso
+data_frame$lambda_probit_lasso<-data_frame$epdf_probit_lasso/data_frame$ecdf_probit_lasso
+
+plot(1:30)
+
+
+```
+
+```{r 15, include=TRUE, echo=TRUE}
+
+plot(ecdf_x_beta_hat_logit_lasso,main = "Emprirical cdf from the predicted values of the Logit Lasso estimates")
+plot(ecdf_x_beta_hat_probit_lasso, main = "Emprirical cdf from the predicted values of the Probit Lasso estimates")
+
+
+plot(epdf_x_beta_hat_logit_lasso, main = "Emprirical pdf from the predicted values of the Logit Lasso estimates")
+plot(epdf_x_beta_hat_probit_lasso,  main = "Emprirical pdf from the predicted values of the Probit Lasso estimates")
+
+plot(data_frame$lambda_logit_lasso, main = "Emprirical lambda of Heckman from the predicted values of the Logit Lasso estimates")
+plot(data_frame$lambda_probit_lasso, main = "Emprirical lambda of Heckman from the predicted values of the Logit Lasso estimates")
+
+```
+
+Now, we will proceed by training some learners in order to predict log(Wage) in equation (2) and in order to do so accounting for sample selection we will use the empirical lambda of Heckman. Hence, as we proceed by computing two versions of the empirical lambda of Heckman, from this point until the estimation of the structural labour supply equation for women we will have two different versions of the predicted log(Wage) and two versions of the the structural labour supply equation for women, say two versions of equation (3).
+
+In the following step we will use the five divisions that we already compute in previous steps and use the two train our learners and in the following step test them. Take into account that previously we have equation (1) where the outcome is a binary variable, which implies that we use as a measure to test the learners the RCC, as stated in James, Witten, Hastie, & Tibshirani (2013). But in equation (2) we would not have classification, as our outcome is a continuous variable, then our measure in order to test the learners is going to be the MSE.
+
+```{r 16, include=FALSE, echo=TRUE}
+
+participants_data_frame<-subset(data_frame, inlf == 1)
+
+sample_participants<-list()
+train_participants<-list()
+test_participants<-list()
+
+for (i in seq(1,5)){
+
+ sample_participants[[i]]<-sample(c(TRUE, FALSE), nrow(participants_data_frame), replace=TRUE, prob=c(0.8,0.2))
+ train_participants[[i]]  <- participants_data_frame[sample_participants[[i]], ]
+ test_participants[[i]]  <- participants_data_frame[!sample_participants[[i]], ]
+}
+  
+
+train_2Step_lambda_logit<-list()
+test_2Step_lambda_logit<-list()
+train_2Step_lambda_probit<-list()
+test_2Step_lambda_probit<-list()
+
+for (i in seq(1,5)){
+
+
+ train_2Step_lambda_logit[[i]]  <- train_participants[[i]][c(-2:-4,-7:-8,-23,-172:-175,-177)]
+ test_2Step_lambda_logit[[i]]  <- test_participants[[i]][c(-2:-4,-7:-8,-23,-172:-175,-177)]
+ train_2Step_lambda_probit[[i]]  <- train_participants[[i]][c(-2:-4,-7:-8,-23,-172:-176)]
+ test_2Step_lambda_probit[[i]]  <- test_participants[[i]][c(-2:-4,-7:-8,-23,-172:-176)]
+
+ 
+ }
+ 
+
+y_lambda_logit<-list()
+x_lambda_logit<-list()
+y_lambda_probit<-list()
+x_lambda_probit<-list()
+
+for (i in seq(1,5)){
+  
+x_lambda_logit[[i]] <- data.matrix(train_2Step_lambda_logit[[i]][c(-16)])
+y_lambda_logit[[i]] <- data.matrix(train_2Step_lambda_logit[[i]][c(16)])
+x_lambda_probit[[i]] <- data.matrix(train_2Step_lambda_probit[[i]][c(-16)])
+y_lambda_probit[[i]] <- data.matrix(train_2Step_lambda_probit[[i]][c(16)])
+
+} 
+
+
+x_lambda_logit_test<-list()
+x_lambda_probit_test<-list()
+
+for (i in seq(1,5)){
+  
+x_lambda_logit_test[[i]] <- data.matrix(test_2Step_lambda_logit[[i]][c(-16)])
+x_lambda_probit_test[[i]] <- data.matrix(test_2Step_lambda_probit[[i]][c(-16)])
+
+} 
+
+#### Model Fitting (for empirical lambda of Heckman for Logit Lasso)
+
+###OLS
+
+OLS_lambda_logit<-list()
+for (i in seq(1,5)){
+OLS_lambda_logit[[i]]=lm(lwage~., data = train_2Step_lambda_logit[[i]])
+}
+
+
+###Elastic Net Regression
+
+##Lasso
+
+#OLS Lasso 
+
+cv.OLS_lasso_lambda_logit<-list()
+
+for (i in seq(1,5)){
+cv.OLS_lasso_lambda_logit[[i]]<- cv.glmnet(x_lambda_logit[[i]],y_lambda_logit[[i]], alpha = 1)
+}
+
+
+best_lambda_OLS_lasso_lambda_logit<-list()
+
+for (i in seq(1,5)){
+best_lambda_OLS_lasso_lambda_logit[[i]]<-cv.OLS_lasso_lambda_logit[[i]]$lambda.min
+}
+
+
+OLS_lasso_lambda_logit<-list()
+
+for (i in seq(1,5)){
+
+OLS_lasso_lambda_logit[[i]]<-glmnet(x_lambda_logit[[i]],y_lambda_logit[[i]], alpha = 1,lambda = best_lambda_OLS_lasso_lambda_logit[[i]])
+print(OLS_lasso_lambda_logit[[i]])
+
+}
+
+##Ridge
+
+#OLS Ridge 
+
+cv.OLS_ridge_lambda_logit<-list()
+
+for (i in seq(1,5)){
+cv.OLS_ridge_lambda_logit[[i]]<- cv.glmnet(x_lambda_logit[[i]],y_lambda_logit[[i]], alpha = 0)
+}
+
+
+best_lambda_OLS_ridge_lambda_logit<-list()
+
+for (i in seq(1,5)){
+best_lambda_OLS_ridge_lambda_logit[[i]]<-cv.OLS_ridge_lambda_logit[[i]]$lambda.min
+}
+
+
+OLS_ridge_lambda_logit<-list()
+
+for (i in seq(1,5)){
+
+OLS_ridge_lambda_logit[[i]]<-glmnet(x_lambda_logit[[i]],y_lambda_logit[[i]], alpha = 0,lambda = best_lambda_OLS_ridge_lambda_logit[[i]])
+print(OLS_ridge_lambda_logit[[i]])
+
+}
+
+
+# alpha=0.5
+
+
+cv.OLS_EN_lambda_logit<-list()
+
+for (i in seq(1,5)){
+cv.OLS_EN_lambda_logit[[i]]<- cv.glmnet(x_lambda_logit[[i]],y_lambda_logit[[i]], alpha = 0.5)
+}
+
+
+best_lambda_OLS_EN_lambda_logit<-list()
+
+for (i in seq(1,5)){
+best_lambda_OLS_EN_lambda_logit[[i]]<-cv.OLS_EN_lambda_logit[[i]]$lambda.min
+}
+
+
+OLS_EN_lambda_logit<-list()
+
+for (i in seq(1,5)){
+
+OLS_EN_lambda_logit[[i]]<-glmnet(x_lambda_logit[[i]],y_lambda_logit[[i]], alpha = 0.5,lambda = best_lambda_OLS_EN_lambda_logit[[i]])
+print(OLS_EN_lambda_logit[[i]])
+
+}
+
+
+###Classification Trees
+
+##Decision Tree
+
+Decision_Tree_lambda_logit<-list()
+
+for (i in seq(1,5)){
+  
+  Decision_Tree_lambda_logit[[i]]<-rpart(lwage~.,data=train_2Step_lambda_logit[[i]])
+
+}
+
+
+
+##Random Forest
+
+
+Random_Forest_lambda_logit<-list()
+
+for (i in seq(1,5)){
+  
+  Random_Forest_lambda_logit[[i]]<-randomForest(lwage~.,data=train_2Step_lambda_logit[[i]])
+
+}
+
+##Neural Networks (NN)
+
+NN_lambda_logit<-list()
+
+for (i in seq(1,5)){
+  
+  NN_lambda_logit[[i]]<-neuralnet(lwage~.,data=train_2Step_lambda_logit[[i]], hidden = c(2,2))
+
+}
+
+
+#### Model Fitting (for empirical lambda of Heckman for Probit Lasso)
+
+###OLS
+
+OLS_lambda_probit<-list()
+for (i in seq(1,5)){
+OLS_lambda_probit[[i]]=lm(lwage~., data = train_2Step_lambda_probit[[i]])
+}
+
+
+###Elastic Net Regression
+
+##Lasso
+
+#OLS Lasso 
+
+cv.OLS_lasso_lambda_probit<-list()
+
+for (i in seq(1,5)){
+cv.OLS_lasso_lambda_probit[[i]]<- cv.glmnet(x_lambda_probit[[i]],y_lambda_probit[[i]], alpha = 1)
+}
+
+
+best_lambda_OLS_lasso_lambda_probit<-list()
+
+for (i in seq(1,5)){
+best_lambda_OLS_lasso_lambda_probit[[i]]<-cv.OLS_lasso_lambda_probit[[i]]$lambda.min
+}
+
+
+OLS_lasso_lambda_probit<-list()
+
+for (i in seq(1,5)){
+
+OLS_lasso_lambda_probit[[i]]<-glmnet(x_lambda_probit[[i]],y_lambda_probit[[i]], alpha = 1,lambda = best_lambda_OLS_lasso_lambda_probit[[i]])
+print(OLS_lasso_lambda_probit[[i]])
+
+}
+
+##Ridge
+
+#OLS Ridge 
+
+cv.OLS_ridge_lambda_probit<-list()
+
+for (i in seq(1,5)){
+cv.OLS_ridge_lambda_probit[[i]]<- cv.glmnet(x_lambda_probit[[i]],y_lambda_probit[[i]], alpha = 0)
+}
+
+
+best_lambda_OLS_ridge_lambda_probit<-list()
+
+for (i in seq(1,5)){
+best_lambda_OLS_ridge_lambda_probit[[i]]<-cv.OLS_ridge_lambda_probit[[i]]$lambda.min
+}
+
+
+OLS_ridge_lambda_probit<-list()
+
+for (i in seq(1,5)){
+
+OLS_ridge_lambda_probit[[i]]<-glmnet(x_lambda_probit[[i]],y_lambda_probit[[i]], alpha = 0,lambda = best_lambda_OLS_ridge_lambda_probit[[i]])
+print(OLS_ridge_lambda_probit[[i]])
+
+}
+
+
+# alpha=0.5
+
+
+cv.OLS_EN_lambda_probit<-list()
+
+for (i in seq(1,5)){
+cv.OLS_EN_lambda_probit[[i]]<- cv.glmnet(x_lambda_probit[[i]],y_lambda_probit[[i]], alpha = 0.5)
+}
+
+
+best_lambda_OLS_EN_lambda_probit<-list()
+
+for (i in seq(1,5)){
+best_lambda_OLS_EN_lambda_probit[[i]]<-cv.OLS_EN_lambda_probit[[i]]$lambda.min
+}
+
+
+OLS_EN_lambda_probit<-list()
+
+for (i in seq(1,5)){
+
+OLS_EN_lambda_probit[[i]]<-glmnet(x_lambda_probit[[i]],y_lambda_probit[[i]], alpha = 0.5,lambda = best_lambda_OLS_EN_lambda_probit[[i]])
+print(OLS_EN_lambda_probit[[i]])
+
+}
+
+
+###Classification Trees
+
+##Decision Tree
+
+Decision_Tree_lambda_probit<-list()
+
+for (i in seq(1,5)){
+  
+  Decision_Tree_lambda_probit[[i]]<-rpart(lwage~.,data=train_2Step_lambda_probit[[i]])
+
+}
+
+
+
+##Random Forest
+
+
+Random_Forest_lambda_probit<-list()
+
+for (i in seq(1,5)){
+  
+  Random_Forest_lambda_probit[[i]]<-randomForest(lwage~.,data=train_2Step_lambda_probit[[i]])
+
+}
+
+##Neural Networks (NN)
+
+NN_lambda_probit<-list()
+
+for (i in seq(1,5)){
+  
+  NN_lambda_probit[[i]]<-neuralnet(lwage~.,data=train_2Step_lambda_probit[[i]], hidden = c(2,2))
+
+}
+
+for (i in seq(1,5)){
+
+  rpart.plot( Decision_Tree_lambda_logit[[i]],type = 3, box.palette = c("red", "green"), fallen.leaves = TRUE)
+  plotcp(Decision_Tree_lambda_logit[[i]])
+  }
+
+for (i in seq(1,5)){
+
+  rpart.plot( Decision_Tree_lambda_probit[[i]],type = 3, box.palette = c("red", "green"), fallen.leaves = TRUE)
+  plotcp(Decision_Tree_lambda_probit[[i]])
+  }
+
+```
+
+```{r 17, include=TRUE, echo=TRUE}
+
+
+  rpart.plot( Decision_Tree_lambda_logit[[1]],type = 3, box.palette = c("red", "green"), fallen.leaves = TRUE)
+  plotcp(Decision_Tree_lambda_logit[[1]])
+
+  rpart.plot( Decision_Tree_lambda_probit[[1]],type = 3, box.palette = c("red", "green"), fallen.leaves = TRUE)
+  plotcp(Decision_Tree_lambda_probit[[1]])
+  
+```
+
+Once we have trained in five splits the following models (even though we will only show the graphs of the first split):
+
+$(i)$ OLS $(ii)$ OLS Lasso $(iii)$ OLS Ridge $(iv)$ OLS with $\alpha=0.5$, which corresponds to the Elastic Net $(v)$ Decision Tree $(vi)$ Random Forest $(vii)$ Neural Networks
+
+We will use Neural Networks to test whether in this second equation performs as in Paliouras & Jessen (1999), even though these authors compute NN for equation (1). The following step is to test the the learners using the MSE as a measure of performing out-of-sample.
+
+```{r 18, include=FALSE, echo=TRUE}
+matrix_MSE_logit<-matrix(NA, nrow=6, ncol=7)
+colnames(matrix_MSE_logit)<-c("OLS","OLS Lasso", "OLS Ridge","OLS Elastic Net","Decision Tree","Random Forest","Neural Networks")
+rownames(matrix_MSE_logit)<-c("Split 1", "Split 2", "Split 3", "Split 4", "Split 5", "Average")
+matrix_MSE_logit <- rownames_to_column(as.data.frame(matrix_MSE_logit), var = "Mean Squared Error (MSE) for empirical lambda of Heckman for Logit Lasso")
+
+
+
+test.probs.OLS_lambda_logit<-list()
+MSE.OLS_lambda_logit<-list()
+
+test.probs.OLS_lasso_lambda_logit<-list()
+MSE.OLS_lasso_lambda_logit<-list()
+
+test.probs.OLS_ridge_lambda_logit<-list()
+MSE.OLS_ridge_lambda_logit<-list()
+
+test.probs.OLS_EN_lambda_logit<-list()
+MSE.OLS_EN_lambda_logit<-list()
+
+test.probs.Decision_Tree_lambda_logit<-list()
+MSE.Decision_Tree_lambda_logit<-list()
+
+test.probs.Random_Forest_lambda_logit<-list()
+MSE.Random_Forest_lambda_logit<-list()
+
+test.probs.NN_lambda_logit<-list()
+MSE.NN_lambda_logit<-list()
+
+for (i in seq(1,5)){
+
+
+#OLS
+
+
+test.probs.OLS_lambda_logit[[i]]<-predict(OLS_lambda_logit[[i]],newdata =test_2Step_lambda_logit[[i]], type="response")
+MSE.OLS_lambda_logit[[i]]<-mse(test_2Step_lambda_logit[[i]]$lwage,test.probs.OLS_lambda_logit[[i]])
+matrix_MSE_logit[i,2]<-MSE.OLS_lambda_logit[[i]]
+
+#### HD Model Testing
+
+# OLS Lasso
+
+test.probs.OLS_lasso_lambda_logit[[i]]<- OLS_lasso_lambda_logit[[i]] %>% predict(newx =x_lambda_logit_test[[i]])
+MSE.OLS_lasso_lambda_logit[[i]]<-mse(test_2Step_lambda_logit[[i]]$lwage,test.probs.OLS_lasso_lambda_logit[[i]])
+matrix_MSE_logit[i,3]<-MSE.OLS_lasso_lambda_logit[[i]]
+
+
+# OLS Ridge
+
+test.probs.OLS_ridge_lambda_logit[[i]]<- OLS_ridge_lambda_logit[[i]] %>% predict(newx =x_lambda_logit_test[[i]])
+MSE.OLS_ridge_lambda_logit[[i]]<-mse(test_2Step_lambda_logit[[i]]$lwage,test.probs.OLS_ridge_lambda_logit[[i]])
+matrix_MSE_logit[i,4]<-MSE.OLS_ridge_lambda_logit[[i]]
+
+# OLS Elastic Nets
+
+test.probs.OLS_EN_lambda_logit[[i]]<- OLS_EN_lambda_logit[[i]] %>% predict(newx =x_lambda_logit_test[[i]])
+MSE.OLS_EN_lambda_logit[[i]]<-mse(test_2Step_lambda_logit[[i]]$lwage,test.probs.OLS_EN_lambda_logit[[i]])
+matrix_MSE_logit[i,5]<-MSE.OLS_EN_lambda_logit[[i]]
+
+
+###Classification Trees
+
+##Decision Tree
+
+test.probs.Decision_Tree_lambda_logit[[i]]<-predict(Decision_Tree_lambda_logit[[i]],newdata =test_2Step_lambda_logit[[i]], type="matrix")
+MSE.Decision_Tree_lambda_logit[[i]]<-mse(test_2Step_lambda_logit[[i]]$lwage,test.probs.Decision_Tree_lambda_logit[[i]])
+matrix_MSE_logit[i,6]<-MSE.Decision_Tree_lambda_logit[[i]]
+
+
+##Random Forest
+
+test.probs.Random_Forest_lambda_logit[[i]]<-predict(Random_Forest_lambda_logit[[i]], newdata =test_2Step_lambda_logit[[i]], type="response")
+MSE.Random_Forest_lambda_logit[[i]]<-mse(test_2Step_lambda_logit[[i]]$lwage,test.probs.Random_Forest_lambda_logit[[i]])
+matrix_MSE_logit[i,7]<-MSE.Random_Forest_lambda_logit[[i]]
+
+
+#Neural Networks
+
+test.probs.NN_lambda_logit[[i]]<-predict(NN_lambda_logit[[i]],  newdata =test_2Step_lambda_logit[[i]], type="response")
+MSE.NN_lambda_logit[[i]]<-mse(test_2Step_lambda_logit[[i]]$lwage,test.probs.NN_lambda_logit[[i]])
+matrix_MSE_logit[i,8]<-MSE.NN_lambda_logit[[i]]
+
+
+}
+
+mean.MSE.OLS_lambda_logit<-mean(unlist(MSE.OLS_lambda_logit))
+matrix_MSE_logit[6,2]<-mean.MSE.OLS_lambda_logit
+mean.MSE.OLS_lasso_lambda_logit<-mean(unlist(MSE.OLS_lasso_lambda_logit))
+matrix_MSE_logit[6,3]<-mean.MSE.OLS_lasso_lambda_logit
+mean.MSE.OLS_ridge_lambda_logit<-mean(unlist(MSE.OLS_ridge_lambda_logit))
+matrix_MSE_logit[6,4]<-mean.MSE.OLS_ridge_lambda_logit
+mean.MSE.OLS_EN_lambda_logit<-mean(unlist(MSE.OLS_EN_lambda_logit))
+matrix_MSE_logit[6,5]<-mean.MSE.OLS_EN_lambda_logit
+mean.MSE.Decision_Tree_lambda_logit<-mean(unlist(MSE.Decision_Tree_lambda_logit))
+matrix_MSE_logit[6,6]<-mean.MSE.Decision_Tree_lambda_logit
+mean.MSE.Random_Forest_lambda_logit<-mean(unlist(MSE.Random_Forest_lambda_logit))
+matrix_MSE_logit[6,7]<-mean.MSE.Random_Forest_lambda_logit
+mean.MSE.NN_lambda_logit<-mean(unlist(MSE.NN_lambda_logit))
+matrix_MSE_logit[6,8]<-mean.MSE.NN_lambda_logit
+
+
+```
+
+```{r 19, include=TRUE, echo=TRUE}
+knitr::kable(t(matrix_MSE_logit), align="c", booktabs=T, caption="MSE Logit")%>%kable_styling(latex_option=c("hold_position"))
+```
+
+Here, for the case in which we use the empirical lambda of Heckman for the predicted values of the Logit Lasso model, we have 3 learners that predict the best out-of-sample. These learners are the OLS Lasso (Average MSE=0.2916950), the OLS EN \(\lambda=0.5\) (Average MSE=0.2988637) and the OLS Ridge (Average MSE=0.3364880). In this case, we will use the OLS Lasso as the learner in order to predict in
+the whole sample the value of \(\hat {log(Wage)}\).
+
+```{r 20, include=FALSE, echo=TRUE}
+matrix_MSE_probit<-matrix(NA, nrow=6, ncol=7)
+colnames(matrix_MSE_probit)<-c("OLS","OLS Lasso", "OLS Ridge","OLS Elastic Net","Decision Tree","Random Forest","Neural Networks")
+rownames(matrix_MSE_probit)<-c("Split 1", "Split 2", "Split 3", "Split 4", "Split 5", "Average")
+matrix_MSE_probit <- rownames_to_column(as.data.frame(matrix_MSE_probit), var = "Mean Squared Error (MSE) for empirical lambda of Heckman for Probit Lasso")
+
+
+
+test.probs.OLS_lambda_probit<-list()
+MSE.OLS_lambda_probit<-list()
+
+test.probs.OLS_lasso_lambda_probit<-list()
+MSE.OLS_lasso_lambda_probit<-list()
+
+test.probs.OLS_ridge_lambda_probit<-list()
+MSE.OLS_ridge_lambda_probit<-list()
+
+test.probs.OLS_EN_lambda_probit<-list()
+MSE.OLS_EN_lambda_probit<-list()
+
+test.probs.Decision_Tree_lambda_probit<-list()
+MSE.Decision_Tree_lambda_probit<-list()
+
+test.probs.Random_Forest_lambda_probit<-list()
+MSE.Random_Forest_lambda_probit<-list()
+
+test.probs.NN_lambda_probit<-list()
+MSE.NN_lambda_probit<-list()
+
+for (i in seq(1,5)){
+
+
+#OLS
+
+
+test.probs.OLS_lambda_probit[[i]]<-predict(OLS_lambda_probit[[i]],newdata =test_2Step_lambda_probit[[i]], type="response")
+MSE.OLS_lambda_probit[[i]]<-mse(test_2Step_lambda_probit[[i]]$lwage,test.probs.OLS_lambda_probit[[i]])
+matrix_MSE_probit[i,2]<-MSE.OLS_lambda_probit[[i]]
+
+#### HD Model Testing
+
+# OLS Lasso
+
+test.probs.OLS_lasso_lambda_probit[[i]]<- OLS_lasso_lambda_probit[[i]] %>% predict(newx =x_lambda_probit_test[[i]])
+MSE.OLS_lasso_lambda_probit[[i]]<-mse(test_2Step_lambda_probit[[i]]$lwage,test.probs.OLS_lasso_lambda_probit[[i]])
+matrix_MSE_probit[i,3]<-MSE.OLS_lasso_lambda_probit[[i]]
+
+
+# OLS Ridge
+
+test.probs.OLS_ridge_lambda_probit[[i]]<- OLS_ridge_lambda_probit[[i]] %>% predict(newx =x_lambda_probit_test[[i]])
+MSE.OLS_ridge_lambda_probit[[i]]<-mse(test_2Step_lambda_probit[[i]]$lwage,test.probs.OLS_ridge_lambda_probit[[i]])
+matrix_MSE_probit[i,4]<-MSE.OLS_ridge_lambda_probit[[i]]
+
+# OLS Elastic Nets
+
+test.probs.OLS_EN_lambda_probit[[i]]<- OLS_EN_lambda_probit[[i]] %>% predict(newx =x_lambda_probit_test[[i]])
+MSE.OLS_EN_lambda_probit[[i]]<-mse(test_2Step_lambda_probit[[i]]$lwage,test.probs.OLS_EN_lambda_probit[[i]])
+matrix_MSE_probit[i,5]<-MSE.OLS_EN_lambda_probit[[i]]
+
+
+###Classification Trees
+
+##Decision Tree
+
+test.probs.Decision_Tree_lambda_probit[[i]]<-predict(Decision_Tree_lambda_probit[[i]],newdata =test_2Step_lambda_probit[[i]], type="matrix")
+MSE.Decision_Tree_lambda_probit[[i]]<-mse(test_2Step_lambda_probit[[i]]$lwage,test.probs.Decision_Tree_lambda_probit[[i]])
+matrix_MSE_probit[i,6]<-MSE.Decision_Tree_lambda_probit[[i]]
+
+
+##Random Forest
+
+test.probs.Random_Forest_lambda_probit[[i]]<-predict(Random_Forest_lambda_probit[[i]], newdata =test_2Step_lambda_probit[[i]], type="response")
+MSE.Random_Forest_lambda_probit[[i]]<-mse(test_2Step_lambda_probit[[i]]$lwage,test.probs.Random_Forest_lambda_probit[[i]])
+matrix_MSE_probit[i,7]<-MSE.Random_Forest_lambda_probit[[i]]
+
+
+#Neural Networks
+
+test.probs.NN_lambda_probit[[i]]<-predict(NN_lambda_probit[[i]],  newdata =test_2Step_lambda_probit[[i]], type="response")
+MSE.NN_lambda_probit[[i]]<-mse(test_2Step_lambda_probit[[i]]$lwage,test.probs.NN_lambda_probit[[i]])
+matrix_MSE_probit[i,8]<-MSE.NN_lambda_probit[[i]]
+
+
+}
+
+mean.MSE.OLS_lambda_probit<-mean(unlist(MSE.OLS_lambda_probit))
+matrix_MSE_probit[6,2]<-mean.MSE.OLS_lambda_probit
+mean.MSE.OLS_lasso_lambda_probit<-mean(unlist(MSE.OLS_lasso_lambda_probit))
+matrix_MSE_probit[6,3]<-mean.MSE.OLS_lasso_lambda_probit
+mean.MSE.OLS_ridge_lambda_probit<-mean(unlist(MSE.OLS_ridge_lambda_probit))
+matrix_MSE_probit[6,4]<-mean.MSE.OLS_ridge_lambda_probit
+mean.MSE.OLS_EN_lambda_probit<-mean(unlist(MSE.OLS_EN_lambda_probit))
+matrix_MSE_probit[6,5]<-mean.MSE.OLS_EN_lambda_probit
+mean.MSE.Decision_Tree_lambda_probit<-mean(unlist(MSE.Decision_Tree_lambda_probit))
+matrix_MSE_probit[6,6]<-mean.MSE.Decision_Tree_lambda_probit
+mean.MSE.Random_Forest_lambda_probit<-mean(unlist(MSE.Random_Forest_lambda_probit))
+matrix_MSE_probit[6,7]<-mean.MSE.Random_Forest_lambda_probit
+mean.MSE.NN_lambda_probit<-mean(unlist(MSE.NN_lambda_probit))
+matrix_MSE_probit[6,8]<-mean.MSE.NN_lambda_probit
+
+
+
+```
+
+```{r 21, include=TRUE, echo=TRUE}
+knitr::kable(t(matrix_MSE_probit), align="c", booktabs=T, caption="MSE Probit")%>%kable_styling(latex_option=c("hold_position"))
+```
+
+In our case different that in Paliouras & Jessen (1999) we do not have the NN learner as the one that outperforms in out-of-sample prediction. Even though, the NN does well, in this case in which we use the empirical lambda of Heckman for the predicted values of the Probit Lasso the learner that best works out-of-sample is the OLS EN \(\lambda=0.5\) (Average MSE=0.3038293) even if in this case OLS Lasso works well in this environment (Average MSE=0.2911794), we will use the version in which \(\lambda=0.5\) to compute \(\hat {log(Wage)}\) for the whole sample, in order to account for robustness in our results depending on the selection of \(\lambda\).
+
+```{r 22, include=FALSE, echo=TRUE}
+
+
+x_lambda_logit_final<-as.matrix(participants_data_frame[c(-2:-4,-7:-8,-23,-172:-175,-177,-21)])
+y_lambda_logit_final<-as.matrix(participants_data_frame[c(21)])
+x_lambda_probit_final<-as.matrix(participants_data_frame[c(-2:-4,-7:-8,-23,-172:-176,-21)])
+y_lambda_probit_final<-as.matrix(participants_data_frame[c(21)])
+
+##OLS Lasso (fitting the model for the whole sample of participants)
+
+
+cv.OLS_lasso_lambda_logit_final<- cv.glmnet(x_lambda_logit_final,y_lambda_logit_final, alpha = 1)
+best_lambda_OLS_lasso_lambda_logit_final<-cv.OLS_lasso_lambda_logit_final$lambda.min
+OLS_lasso_lambda_logit_final<-glmnet(x_lambda_logit_final,y_lambda_logit_final, alpha = 1,lambda = best_lambda_OLS_lasso_lambda_logit_final)
+print(OLS_lasso_lambda_logit_final)
+participants_data_frame$lwage_hat_1<- OLS_lasso_lambda_logit_final %>% predict(newx =x_lambda_logit_final)
+
+
+
+##OLS EN (fitting the model for the whole sample of participants)
+
+
+cv.OLS_lasso_lambda_probit_final<- cv.glmnet(x_lambda_probit_final,y_lambda_probit_final, alpha = 0.5)
+best_lambda_OLS_lasso_lambda_probit_final<-cv.OLS_lasso_lambda_probit_final$lambda.min
+OLS_lasso_lambda_probit_final<-glmnet(x_lambda_probit_final,y_lambda_probit_final, alpha = 0.5,lambda = best_lambda_OLS_lasso_lambda_probit_final)
+print(OLS_lasso_lambda_probit_final)
+participants_data_frame$lwage_hat_2<- OLS_lasso_lambda_probit_final %>% predict(newx =x_lambda_probit_final)
+
+
+
+
+
+
+
+```
+
+After computing this regressions we will use the predicted values of this regression in order to compute the labour supply equation. As stated in Weerasooriya (2018) in its paper Mroz (1987) suspects that log(Wage) will be endogenous in equation (3), the structural equation. Then, the Reduced Form equation, equation (2) for this porpoise will solve the endogeneity of the structural equation (3) and also we will solve the Sample Selection issue by computing introduction as covariates in equation (3) the empirical Inverse Mill's ratio.
+
+```{r 23, include=TRUE, echo=TRUE}
+#Structural Labour Supply equations
+attach(participants_data_frame)
+
+structural_equation_1<-lm(hours~lwage_hat_1+nwifeinc+age+educ+kids+lambda_logit_lasso )
+structural_equation_1_robust<-lmtest::coeftest(structural_equation_1, vcoc=sandwich::vcovHC(structural_equation_2, type='HC2'))
+ 
+structural_equation_2<-lm(hours~lwage_hat_2+nwifeinc+age+educ+kids+lambda_probit_lasso )
+structural_equation_2_robust<-lmtest::coeftest(structural_equation_2, vcoc=sandwich::vcovHC(structural_equation_2, type='HC2'))
+
+stargazer(structural_equation_1_robust, structural_equation_2_robust)
+```
+
+The following outputs are the two structural equations that we have computed. We can see that the outcome is sign invariant with respect to the empirical lambda that we use and with the learner used to compute $\hat {log(Wage)}$.
+
+## References
+
+James, G., Witten, D., Hastie, T., & Tibshirani, R. (2013). An introduction to statistical learning. Springer.
+
+Mroz, T. A. (1984). The sensitivity of an empirical model of married women's hours of work to economic and statistical assumptions. Stanford University.
+
+Paliouras, G., Jessen, H. C., & Athens, U. K. (1999). Statistical and learning approaches to nonlinear modeling of labour force participation. Neural Network World, 9, 341-364.
+
+Weerasooriya, T. R. (2018). High-dimensional sample selection models: Machine-learning algorithms in the Heckman two-step.
