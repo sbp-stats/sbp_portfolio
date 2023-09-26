@@ -21,8 +21,7 @@ and its consequences, providing insights into education and economic development
 * The file CIML_Sergio_Blanco_Piñeiro is the final research project whose title is **The Sensitivity of an Empirical Model of Married Women’s Hours of Work to
 Economic and Statistical Assumptions**
 
-*Abstract*:
-The goal is to follow Mroz’s multistage procedure to estimate a structural labor
+* *Abstract*: The goal is to follow Mroz’s multistage procedure to estimate a structural labor
 supply equation. This study will employ the data set used in Mroz (1987), which contains data
 for 753 working-age, married, women, in 1975. The data set is a Cross-section of data
 originating from the 1976 Panel Study of Income Dynamics (PSID), based on data for
