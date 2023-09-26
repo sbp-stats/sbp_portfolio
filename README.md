@@ -4,15 +4,16 @@ The following information can be found in this repository:
 
 1. Master_Thesis folder contains my Thesis **The Effect of Losing a Parent on Children's Educational Development**. supervised by Warn N. Lekfuangfu.
   
-   *Abstract*: This research examines how the loss of a parent affects children’s academic performance
-in developing countries such as Ethiopia, Peru, Vietnam, and India. Due to limited
-data, the study uses various methods to reveal causal relationships and their differences
-among gender and age groups. The study focuses on standardized test scores and uses a
-staggered difference-in-difference methodology to determine causality. However, the primary
-objective is to uncover how the effects of parental loss vary by gender and age. The
-study shows significant gender differences and emphasizes the importance
-of the timing of parental loss. Future research directions include investigating parental education levels' impact and exploring parental loss's influence on educational attainment. This research contributes to the literature on parental absence
-and its consequences, providing insights into education and economic development policies.
+         *Abstract*: This research examines how the loss of a parent affects children’s academic performance
+          in developing countries such as Ethiopia, Peru, Vietnam, and India. Due to limited
+          data, the study uses various methods to reveal causal relationships and their differences
+          among gender and age groups. The study focuses on standardized test scores and uses a
+          staggered difference-in-difference methodology to determine causality. However, the primary
+          objective is to uncover how the effects of parental loss vary by gender and age. The
+          study shows significant gender differences and emphasizes the importance
+          of the timing of parental loss. Future research directions include investigating parental education levels' impact and exploring parental loss's 
+          influence on educational attainment. This research contributes to the literature on parental absence
+          and its consequences, providing insights into education and economic development policies.
 
 ---
 
