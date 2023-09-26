@@ -2,8 +2,9 @@
 
 The following information can be found in this repository:
 
-1. Master_Thesis folder contains my Thesis **The Effect of Losing a Parent on Children's Educational Development**. supervised by Warn N. Lekfuangfu. *Abstract*: 
-This research examines how the loss of a parent affects children’s academic performance
+1. Master_Thesis folder contains my Thesis **The Effect of Losing a Parent on Children's Educational Development**. supervised by Warn N. Lekfuangfu.
+  
+  * *Abstract*: This research examines how the loss of a parent affects children’s academic performance
 in developing countries such as Ethiopia, Peru, Vietnam, and India. Due to limited
 data, the study uses various methods to reveal causal relationships and their differences
 among gender and age groups. The study focuses on standardized test scores and uses a
@@ -14,7 +15,7 @@ of the timing of parental loss. Future research directions include investigating
 and its consequences, providing insights into education and economic development policies.
 
 
-2. R_ML_project folder contains the final project of the graduate course in ***Causal Inference and Machine Learning (CIML)*** at UC3M. In this folder, the following files can be found:
+4. R_ML_project folder contains the final project of the graduate course in ***Causal Inference and Machine Learning (CIML)*** at UC3M. In this folder, the following files can be found:
 
 * The file CIML_Sergio_Blanco_Piñeiro is the final research project whose title is **The Sensitivity of an Empirical Model of Married Women’s Hours of Work to
 Economic and Statistical Assumptions**
