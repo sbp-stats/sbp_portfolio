@@ -4,7 +4,7 @@ The following information can be found in this repository:
 
 1. Master_Thesis folder contains my Thesis **The Effect of Losing a Parent on Children's Educational Development**. supervised by Warn N. Lekfuangfu.
   
-  * *Abstract*: This research examines how the loss of a parent affects children’s academic performance
+   *Abstract*: This research examines how the loss of a parent affects children’s academic performance
 in developing countries such as Ethiopia, Peru, Vietnam, and India. Due to limited
 data, the study uses various methods to reveal causal relationships and their differences
 among gender and age groups. The study focuses on standardized test scores and uses a
@@ -21,7 +21,7 @@ and its consequences, providing insights into education and economic development
 * The file CIML_Sergio_Blanco_Piñeiro is the final research project whose title is **The Sensitivity of an Empirical Model of Married Women’s Hours of Work to
 Economic and Statistical Assumptions**
 
-* *Abstract*: The goal is to follow Mroz’s multistage procedure to estimate a structural labor
+ *Abstract*: The goal is to follow Mroz’s multistage procedure to estimate a structural labor
 supply equation. This study will employ the data set used in Mroz (1987), which contains data
 for 753 working-age, married, women, in 1975. The data set is a Cross-section of data
 originating from the 1976 Panel Study of Income Dynamics (PSID), based on data for
