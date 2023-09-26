@@ -33,3 +33,7 @@ Economic and Statistical Assumptions**
 * The file [Project.Rmd](https://github.com/sbp-stats/sbp_portfolio/blob/main/R_ML_project/Project.Rmd) is the commented code of this project in and .Rmd file
 
 ---
+3. [Coding_examples](https://github.com/sbp-stats/sbp_portfolio/tree/main/Coding_examples) folder contains different coding examples using Stata, R and Python
+---
+4. [CV](https://github.com/sbp-stats/sbp_portfolio/blob/main/sbp_cv.pdf) contains my updated curriculum vitae.
+ 
