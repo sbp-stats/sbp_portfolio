@@ -2,7 +2,7 @@
 
 The following information can be found in this repository:
 
-1. [Master_Thesis] (https://github.com/sbp-stats/sbp_portfolio/tree/main/Master_Thesis) folder contains my Thesis **The Effect of Losing a Parent on Children's Educational Development**. supervised by Warn N. Lekfuangfu.
+1. [Master_Thesis](https://github.com/sbp-stats/sbp_portfolio/tree/main/Master_Thesis) folder contains my Thesis **The Effect of Losing a Parent on Children's Educational Development**. supervised by Warn N. Lekfuangfu.
   
           Abstract: This research examines how the loss of a parent affects children’s academic performance
           in developing countries such as Ethiopia, Peru, Vietnam, and India. Due to limited
