@@ -28,9 +28,8 @@ Economic and Statistical Assumptions**
        originating from the 1976 Panel Study of Income Dynamics (PSID), based on data for
        the previous year, 1975.
 
-   * The file mroz.des.txt contains information related to the variables used in this analysis
-
-   * The file mroz.dta contains the raw data used in Mroz (1987)
-   * The file Project.Rmd is the commented code of this project in and .Rmd file
+* The file mroz.des.txt contains information related to the variables used in this analysis
+* The file mroz.dta contains the raw data used in Mroz (1987)
+* The file Project.Rmd is the commented code of this project in and .Rmd file
 
 ---
