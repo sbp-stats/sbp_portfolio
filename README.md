@@ -14,8 +14,9 @@ study shows significant gender differences and emphasizes the importance
 of the timing of parental loss. Future research directions include investigating parental education levels' impact and exploring parental loss's influence on educational attainment. This research contributes to the literature on parental absence
 and its consequences, providing insights into education and economic development policies.
 
+---
 
-4. R_ML_project folder contains the final project of the graduate course in ***Causal Inference and Machine Learning (CIML)*** at UC3M. In this folder, the following files can be found:
+2. R_ML_project folder contains the final project of the graduate course in ***Causal Inference and Machine Learning (CIML)*** at UC3M. In this folder, the following files can be found:
 
 * The file CIML_Sergio_Blanco_Piñeiro is the final research project whose title is **The Sensitivity of an Empirical Model of Married Women’s Hours of Work to
 Economic and Statistical Assumptions**
@@ -31,3 +32,5 @@ the previous year, 1975.
 
    * The file mroz.dta contains the raw data used in Mroz (1987)
    * The file Project.Rmd is the commented code of this project in and .Rmd file
+
+---
