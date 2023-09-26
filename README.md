@@ -18,7 +18,7 @@ and its consequences, providing insights into education and economic development
 
 2. R_ML_project folder contains the final project of the graduate course in ***Causal Inference and Machine Learning (CIML)*** at UC3M. In this folder, the following files can be found:
 
-   * The file CIML_Sergio_Blanco_Piñeiro is the final research project whose title is **The Sensitivity of an Empirical Model of Married Women’s Hours of Work to
+* The file CIML_Sergio_Blanco_Piñeiro is the final research project whose title is **The Sensitivity of an Empirical Model of Married Women’s Hours of Work to
 Economic and Statistical Assumptions**
 
 *Abstract*:
