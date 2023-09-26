@@ -19,7 +19,7 @@ The following information can be found in this repository:
 
 2. [R_ML_project](https://github.com/sbp-stats/sbp_portfolio/tree/main/R_ML_project)  folder contains the final project of the graduate course in ***Causal Inference and Machine Learning (CIML)*** at UC3M. In this folder, the following files can be found:
 
-* The file CIML_Sergio_Blanco_Piñeiro is the final research project whose title is **The Sensitivity of an Empirical Model of Married Women’s Hours of Work to
+* The file [CIML_Sergio_Blanco_Piñeiro](https://github.com/sbp-stats/sbp_portfolio/blob/main/R_ML_project/CIML_Sergio_Blanco_Pi%C3%B1eiro.pdf) is the final research project whose title is **The Sensitivity of an Empirical Model of Married Women’s Hours of Work to
 Economic and Statistical Assumptions**
 
        Abstract: The goal is to follow Mroz’s multistage procedure to estimate a structural labor
@@ -28,8 +28,8 @@ Economic and Statistical Assumptions**
        originating from the 1976 Panel Study of Income Dynamics (PSID), based on data for
        the previous year, 1975.
 
-* The file mroz.des.txt contains information related to the variables used in this analysis
-* The file mroz.dta contains the raw data used in Mroz (1987)
-* The file Project.Rmd is the commented code of this project in and .Rmd file
+* The file [mroz.des.txt](https://github.com/sbp-stats/sbp_portfolio/blob/main/R_ML_project/mroz.des.txt) contains information related to the variables used in this analysis
+* The file [mroz.dta](https://github.com/sbp-stats/sbp_portfolio/blob/main/R_ML_project/mroz.dta) contains the raw data used in Mroz (1987)
+* The file [Project.Rmd](https://github.com/sbp-stats/sbp_portfolio/blob/main/R_ML_project/Project.Rmd) is the commented code of this project in and .Rmd file
 
 ---
